@@ -25,6 +25,7 @@ import github.kasuminova.ecoaeextension.common.tile.ecotech.efabricator.EFabrica
 import github.kasuminova.ecoaeextension.common.util.MachineCoolants;
 import hellfirepvp.modularmachinery.ModularMachinery;
 import hellfirepvp.modularmachinery.client.ClientProxy;
+import hellfirepvp.modularmachinery.common.machine.IOType;
 import hellfirepvp.modularmachinery.common.machine.MachineRegistry;
 import hellfirepvp.modularmachinery.common.util.ItemUtils;
 import it.unimi.dsi.fastutil.objects.Object2ObjectAVLTreeMap;
@@ -248,13 +249,17 @@ public class EFabricatorController extends EPartController<EFabricatorPart> {
         super.updateComponents();
         IDynamicPatternInfo workers = getDynamicPattern("workers");
         this.length = workers != null ? workers.getSize() : 0;
-        this.foundComponents.values().forEach(component -> {
-            if (component.providedComponent() instanceof IFluidHandler handler) {
-                switch (component.getComponent().ioType) {
-                    case INPUT -> coolantInputHandlers.add(handler);
-                    case OUTPUT -> coolantOutputHandlers.add(handler);
+        this.foundComponents.values().forEach(tileComponentMap -> {
+            tileComponentMap.values().forEach(component -> {
+                Object handler = component.providedComponent();
+                if (handler instanceof IFluidHandler fluidHandler) {
+                    if (component.getComponent().ioType == IOType.INPUT) {
+                        coolantInputHandlers.add(fluidHandler);
+                    } else {
+                        coolantOutputHandlers.add(fluidHandler);
+                    }
                 }
-            }
+            });
         });
         updateParallelism();
         updateWorkDelay();

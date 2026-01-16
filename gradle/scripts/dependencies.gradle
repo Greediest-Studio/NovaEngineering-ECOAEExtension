@@ -70,7 +70,7 @@ dependencies {
     // }
 
     implementation("CraftTweaker2:CraftTweaker2-MC1120-Main:1.12-4.+")
-    implementation(rfg.deobf("curse.maven:modularmachinery-community-edition-817377:6945422"))
+    implementation(rfg.deobf("curse.maven:modularmachinery-community-edition-817377:7372951"))
     implementation(rfg.deobf(files("libs/MMCE-ComponentModelHider-1.1-dev.jar")))
     implementation(rfg.deobf(files("libs/resourceloader-1.5.3-main.jar")))
     implementation(rfg.deobf(files("libs/lumenized-1.0.3-dev.jar")))
