@@ -27,8 +27,11 @@ import com.circulation.random_complement.client.RCSettings;
 import com.circulation.random_complement.client.buttonsetting.IntelligentBlocking;
 import com.circulation.random_complement.common.interfaces.RCIConfigurableObject;
 import com.glodblock.github.coremod.CoreModHooks;
+import com.glodblock.github.integration.mek.FCGasItems;
 import com.glodblock.github.inventory.FluidConvertingInventoryCrafting;
+import com.glodblock.github.loader.FCItems;
 import com.glodblock.github.util.FluidCraftingPatternDetails;
+import com.glodblock.github.util.ModAndClassUtil;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import github.kasuminova.ecoaeextension.common.tile.MEPatternProviderNova;
@@ -61,8 +64,31 @@ import java.util.Objects;
 import java.util.Queue;
 import java.util.stream.Collectors;
 
-@Mixin(value = CraftingCPUCluster.class, remap = false ,priority = 0)
+@Mixin(value = CraftingCPUCluster.class, remap = false, priority = 0)
 public abstract class MixinCraftingCPUClusterTwo {
+
+    @Shadow
+    private int remainingOperations;
+    @Shadow
+    private MachineSource machineSrc;
+    @Shadow
+    private MECraftingInventory inventory;
+    @Shadow
+    @Final
+    private Map<ICraftingPatternDetails, AccessorTaskProgress> tasks;
+    @Shadow
+    @Final
+    private Map<ICraftingPatternDetails, Queue<ICraftingMedium>> visitedMediums;
+    @Shadow
+    private boolean somethingChanged;
+    @Shadow
+    private IItemList<IAEItemStack> waitingFor;
+    @Unique
+    private boolean r$IgnoreParallel = false;
+    @Unique
+    private long r$craftingFrequency = 0;
+    @Unique
+    private boolean r$nae2$ghostInjecting;
 
     @Shadow
     protected abstract void postChange(IAEItemStack diff, IActionSource src);
@@ -71,31 +97,10 @@ public abstract class MixinCraftingCPUClusterTwo {
     protected abstract void postCraftingStatusChange(IAEItemStack diff);
 
     @Shadow
-    private int remainingOperations;
-    @Shadow
-    private MachineSource machineSrc;
-    @Shadow
-    private MECraftingInventory inventory;
-
-    @Shadow
-    @Final
-    private Map<ICraftingPatternDetails, AccessorTaskProgress> tasks;
-
-    @Shadow
     protected abstract boolean canCraft(ICraftingPatternDetails details, IAEItemStack[] condensedInputs);
 
     @Shadow
-    @Final
-    private Map<ICraftingPatternDetails, Queue<ICraftingMedium>> visitedMediums;
-
-    @Shadow
     protected abstract World getWorld();
-
-    @Shadow
-    private boolean somethingChanged;
-
-    @Shadow
-    private IItemList<IAEItemStack> waitingFor;
 
     @Shadow
     protected abstract void markDirty();
@@ -109,12 +114,6 @@ public abstract class MixinCraftingCPUClusterTwo {
     @Shadow
     public abstract IAEItemStack injectItems(IAEItemStack input, Actionable type, IActionSource src);
 
-    @Unique
-    private boolean r$IgnoreParallel = false;
-
-    @Unique
-    private long r$craftingFrequency = 0;
-
     /**
      * @author circulation
      * @reason 完全覆写样板发配方法
@@ -126,14 +125,14 @@ public abstract class MixinCraftingCPUClusterTwo {
 
         while (i.hasNext()) {
             Map.Entry<ICraftingPatternDetails, AccessorTaskProgress> e = i.next();
-            var value = ((AccessorTaskProgress) e.getValue());
+            val value = ((AccessorTaskProgress) e.getValue());
             if (value.getValue() <= 0L) {
                 i.remove();
             } else {
-                var key = e.getKey();
+                val key = e.getKey();
 
                 long max = 0;
-                var list = (key.isCraftable() || key instanceof FluidCraftingPatternDetails) ? key.getCondensedOutputs() : key.getCondensedInputs();
+                val list = (key.isCraftable() || key instanceof FluidCraftingPatternDetails) ? key.getCondensedOutputs() : key.getCondensedInputs();
                 for (IAEItemStack stack1 : list) {
                     long size = stack1.getStackSize();
                     if (size > max) max = size;
@@ -152,12 +151,13 @@ public abstract class MixinCraftingCPUClusterTwo {
                     }
 
                     boolean didPatternCraft;
-                    doWhileCraftingLoop:do {
+                    doWhileCraftingLoop:
+                    do {
                         InventoryCrafting ic = null;
                         didPatternCraft = false;
 
                         if (!this.visitedMediums.containsKey(key) || this.visitedMediums.get(key).isEmpty()) {
-                            this.visitedMediums.put(key, new ArrayDeque<>(cc.getMediums(key).stream().filter(Objects::nonNull).collect(Collectors.toList())));
+                            this.visitedMediums.put(key, cc.getMediums(key).stream().filter(Objects::nonNull).collect(Collectors.toCollection(ArrayDeque::new)));
                         }
 
                         while (!this.visitedMediums.get(key).isEmpty()) {
@@ -167,10 +167,20 @@ public abstract class MixinCraftingCPUClusterTwo {
                                 if (ic == null) {
                                     IAEItemStack[] input = key.getInputs();
                                     double sum = 0;
-
                                     for (IAEItemStack anInput : input) {
                                         if (anInput != null) {
-                                            sum += (double) CoreModHooks.getFluidSize(anInput);
+                                            if (anInput.getDefinition() != null && !anInput.getDefinition().isEmpty()) {
+                                                if (anInput.getDefinition().getItem() == FCItems.FLUID_DROP) {
+                                                    sum += Math.max((double)anInput.getStackSize() / (double)1000.0F, (double)1.0F);
+                                                    continue;
+                                                }
+
+                                                if (ModAndClassUtil.GAS && anInput.getDefinition().getItem() == FCGasItems.GAS_DROP) {
+                                                    sum += Math.max((double)anInput.getStackSize() / (double)4000.0F, (double)1.0F);
+                                                    continue;
+                                                }
+                                            }
+                                            sum += anInput.getStackSize();
                                         }
                                     }
 
@@ -181,7 +191,7 @@ public abstract class MixinCraftingCPUClusterTwo {
                                         double o = eg.extractAEPower(sum1, Actionable.SIMULATE, PowerMultiplier.CONFIG);
                                         if (o < sum1 - 0.01) {
                                             this.r$craftingFrequency = (long) (o / sum1 * this.r$craftingFrequency);
-                                            s = Math.max(1, this.r$craftingFrequency);
+                                            s = Math.max(s, this.r$craftingFrequency);
                                         }
                                     }
                                     energy = eg.extractAEPower(sum * s, Actionable.MODULATE, PowerMultiplier.CONFIG);
@@ -301,7 +311,7 @@ public abstract class MixinCraftingCPUClusterTwo {
                                     }
 
                                     for (IAEItemStack out : outputs) {
-                                        var iaeStack = out.copy();
+                                        val iaeStack = out.copy();
                                         if (mediumType != MediumType.NULL)
                                             iaeStack.setStackSize(iaeStack.getStackSize() * this.r$craftingFrequency);
                                         r$postProcessing(iaeStack);
@@ -339,7 +349,8 @@ public abstract class MixinCraftingCPUClusterTwo {
                                         return;
                                     }
 
-                                    if (m instanceof DualityInterface di && (di.getConfigManager().getSetting(Settings.BLOCK) == YesNo.YES && ((RCIConfigurableObject) di).r$getConfigManager().getSetting(RCSettings.IntelligentBlocking) == IntelligentBlocking.CLOSE)
+                                    if (m instanceof DualityInterface di &&
+                                            (di.getConfigManager().getSetting(Settings.BLOCK) == YesNo.YES && ((RCIConfigurableObject) di).r$getConfigManager().getSetting(RCSettings.IntelligentBlocking) == IntelligentBlocking.CLOSE)
                                     )
                                         break;
                                 }
@@ -374,12 +385,12 @@ public abstract class MixinCraftingCPUClusterTwo {
     @NotNull
     private MediumType r$specialMediumTreatment(ICraftingMedium m, ICraftingPatternDetails details) {
         if (m instanceof MEPatternProviderNova mep) {
-            if (mep.getWorkMode() == MEPatternProvider.WorkModeSetting.DEFAULT
-                    || mep.getWorkMode() == MEPatternProvider.WorkModeSetting.ENHANCED_BLOCKING_MODE) {
+            if (mep.getWorkMode() != MEPatternProvider.WorkModeSetting.BLOCKING_MODE
+                    && mep.getWorkMode() != MEPatternProvider.WorkModeSetting.CRAFTING_LOCK_MODE) {
 
                 for (IAEItemStack input : details.getCondensedInputs()) {
                     long size = input.getStackSize() * this.r$craftingFrequency;
-                    var item = this.inventory.extractItems(input.copy().setStackSize(size), Actionable.SIMULATE, this.machineSrc);
+                    val item = this.inventory.extractItems(input.copy().setStackSize(size), Actionable.SIMULATE, this.machineSrc);
                     if (item == null) continue;
                     if (item.getStackSize() < size) {
                         this.r$craftingFrequency = Math.max(1, item.getStackSize() / input.getStackSize());
@@ -403,7 +414,7 @@ public abstract class MixinCraftingCPUClusterTwo {
             for (IAEItemStack input : details.getInputs()) {
                 if (input == null) continue;
                 long size = this.r$craftingFrequency;
-                var item = this.inventory.extractItems(input.copy().setStackSize(size), Actionable.SIMULATE, this.machineSrc);
+                val item = this.inventory.extractItems(input.copy().setStackSize(size), Actionable.SIMULATE, this.machineSrc);
                 if (item == null) continue;
                 if (item.getStackSize() < size) {
                     long size0 = item.getStackSize() / input.getStackSize();
@@ -428,9 +439,6 @@ public abstract class MixinCraftingCPUClusterTwo {
     }
 
     @Unique
-    private boolean r$nae2$ghostInjecting;
-
-    @Unique
     protected void r$nae2$ghostInject(IAEItemStack output) {
         this.r$nae2$ghostInjecting = true;
         try {
@@ -441,25 +449,25 @@ public abstract class MixinCraftingCPUClusterTwo {
     }
 
     @WrapOperation(
-            method = {"injectItems"},
-            at = {@At(
+            method = "injectItems",
+            at = @At(
                     value = "INVOKE",
                     target = "Lappeng/crafting/CraftingLink;injectItems(Lappeng/api/storage/data/IAEItemStack;Lappeng/api/config/Actionable;)Lappeng/api/storage/data/IAEItemStack;"
-            )}
+            )
     )
     protected IAEItemStack wrapInjectItems(CraftingLink link, IAEItemStack item, Actionable actionable, Operation<IAEItemStack> operation) {
-        return this.r$nae2$ghostInjecting ? null : (IAEItemStack) operation.call(link, item, actionable);
+        return this.r$nae2$ghostInjecting ? null : operation.call(link, item, actionable);
     }
 
     @WrapOperation(
-            method = {"injectItems"},
-            at = {@At(
+            method = "injectItems",
+            at = @At(
                     value = "INVOKE",
                     target = "Lappeng/crafting/MECraftingInventory;injectItems(Lappeng/api/storage/data/IAEItemStack;Lappeng/api/config/Actionable;Lappeng/api/networking/security/IActionSource;)Lappeng/api/storage/data/IAEItemStack;"
-            )}
+            )
     )
     protected IAEItemStack wrapInjectItems(MECraftingInventory link, IAEItemStack item, Actionable actionable, IActionSource source, Operation<IAEItemStack> operation) {
-        return this.r$nae2$ghostInjecting ? null : (IAEItemStack) operation.call(link, item, actionable, source);
+        return this.r$nae2$ghostInjecting ? null : operation.call(link, item, actionable, source);
     }
 
     @Mixin(targets = "appeng.me.cluster.implementations.CraftingCPUCluster$TaskProgress", remap = false)
