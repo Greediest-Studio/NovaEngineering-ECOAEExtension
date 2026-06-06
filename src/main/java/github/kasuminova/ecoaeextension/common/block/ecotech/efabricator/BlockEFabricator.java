@@ -14,13 +14,31 @@ import javax.annotation.Nonnull;
 @SuppressWarnings("deprecation")
 public abstract class BlockEFabricator extends Block {
 
+    protected String harvestTool = "pickaxe";
+    protected int harvestLevel = 0;
+
     protected BlockEFabricator() {
         super(Material.IRON);
         this.setHardness(20.0F);
         this.setResistance(2000.0F);
         this.setSoundType(SoundType.METAL);
-        this.setHarvestLevel("pickaxe", 2);
         this.setCreativeTab(CreativeTabNovaEng.INSTANCE);
+    }
+
+    @Override
+    public void setHarvestLevel(String toolClass, int level) {
+        this.harvestTool = toolClass;
+        this.harvestLevel = level;
+    }
+
+    @Override
+    public String getHarvestTool(@Nonnull IBlockState state) {
+        return harvestTool;
+    }
+
+    @Override
+    public int getHarvestLevel(@Nonnull IBlockState state) {
+        return harvestLevel;
     }
 
     @Override

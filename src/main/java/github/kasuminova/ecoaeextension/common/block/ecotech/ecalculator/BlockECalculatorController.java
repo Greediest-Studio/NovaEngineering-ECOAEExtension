@@ -53,7 +53,6 @@ public class BlockECalculatorController extends BlockController {
         this.setCreativeTab(CreativeTabNovaEng.INSTANCE);
         this.setHardness(20.0F);
         this.setResistance(2000.0F);
-        this.setHarvestLevel("pickaxe", 2);
         this.fullBlock = false;
 
         registryName = new ResourceLocation(ECOAEExtension.MOD_ID, "extendable_calculator_subsystem_" + level);

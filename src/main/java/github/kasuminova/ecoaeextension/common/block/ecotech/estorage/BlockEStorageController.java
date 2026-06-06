@@ -53,7 +53,6 @@ public class BlockEStorageController extends BlockController {
     public BlockEStorageController(final String level) {
         this.setHardness(20.0F);
         this.setResistance(2000.0F);
-        this.setHarvestLevel("pickaxe", 2);
         this.fullBlock = false;
         this.setCreativeTab(CreativeTabNovaEng.INSTANCE);
         registryName = new ResourceLocation(ECOAEExtension.MOD_ID, "extendable_digital_storage_subsystem_" + level);
