@@ -6,9 +6,11 @@ import github.kasuminova.ecoaeextension.ECOAEExtension;
 import github.kasuminova.ecoaeextension.common.block.prop.FacingProp;
 import github.kasuminova.ecoaeextension.common.tile.TileCustomController;
 import github.kasuminova.ecoaeextension.common.util.EPartMap;
+import hellfirepvp.modularmachinery.common.block.BlockController;
 import hellfirepvp.modularmachinery.ModularMachinery;
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
@@ -20,9 +22,11 @@ public abstract class EPartController<P extends EPart<?>> extends TileCustomCont
 
     protected final EPartMap<P> parts = new EPartMap<>();
     protected boolean assembled = false;
+    protected EnumFacing placementFacingLock = null;
 
     @Override
     public void doControllerTick() {
+        enforcePlacementFacingLockTick();
         if (!this.doStructureCheck() || !this.isStructureFormed()) {
             disassemble();
             return;
@@ -134,19 +138,86 @@ public abstract class EPartController<P extends EPart<?>> extends TileCustomCont
 
     @Override
     protected void checkRotation() {
-        if (controllerRotation != null) {
-            return;
-        }
         IBlockState state = getWorld().getBlockState(getPos());
-        if (getControllerBlock().isInstance(state.getBlock())) {
-            controllerRotation = state.getValue(FacingProp.HORIZONTALS);
-        } else {
+        if (!getControllerBlock().isInstance(state.getBlock())) {
             ECOAEExtension.log.warn("Invalid EPartController block at {} !", getPos());
             controllerRotation = EnumFacing.NORTH;
+            placementFacingLock = EnumFacing.NORTH;
+            return;
         }
+
+        EnumFacing stateFacing = state.getValue(BlockController.FACING);
+        if (placementFacingLock == null) {
+            placementFacingLock = controllerRotation != null ? controllerRotation : stateFacing;
+        }
+        if (controllerRotation == null) {
+            controllerRotation = placementFacingLock;
+        }
+        enforceLockedFacing(state);
     }
 
     protected abstract Class<? extends Block> getControllerBlock();
+
+    public void setPlacementFacingLock(final EnumFacing facing) {
+        if (facing == null) {
+            return;
+        }
+        this.placementFacingLock = facing;
+        this.controllerRotation = facing;
+        markForUpdate();
+        markDirty();
+        ECOAEExtension.log.info("[ECOAE][FacingLock] set lock dim={} pos={} facing={}",
+                world != null ? world.provider.getDimension() : -1,
+                getPos(),
+                facing);
+    }
+
+    protected EnumFacing getExpectedFacing(final IBlockState state) {
+        if (placementFacingLock != null) {
+            return placementFacingLock;
+        }
+        if (controllerRotation != null) {
+            return controllerRotation;
+        }
+        if (state.getPropertyKeys().contains(BlockController.FACING)) {
+            return state.getValue(BlockController.FACING);
+        }
+        if (state.getPropertyKeys().contains(FacingProp.HORIZONTALS)) {
+            return state.getValue(FacingProp.HORIZONTALS);
+        }
+        return EnumFacing.NORTH;
+    }
+
+    protected void enforceLockedFacing(final IBlockState state) {
+        if (world == null || world.isRemote || !getControllerBlock().isInstance(state.getBlock())) {
+            return;
+        }
+
+        EnumFacing expectedFacing = getExpectedFacing(state);
+        EnumFacing stateFacing = state.getValue(BlockController.FACING);
+        if (stateFacing != expectedFacing) {
+            IBlockState fixedState = state.withProperty(BlockController.FACING, expectedFacing);
+            world.setBlockState(getPos(), fixedState, 3);
+            ECOAEExtension.log.warn("[ECOAE][FacingLock] corrected dim={} pos={} stateFacing={} expected={}",
+                    world.provider.getDimension(),
+                    getPos(),
+                    stateFacing,
+                    expectedFacing);
+        }
+        this.controllerRotation = expectedFacing;
+        this.placementFacingLock = expectedFacing;
+    }
+
+    protected void enforcePlacementFacingLockTick() {
+        if (world == null || world.isRemote || getPos() == null) {
+            return;
+        }
+        IBlockState state = world.getBlockState(getPos());
+        if (!getControllerBlock().isInstance(state.getBlock())) {
+            return;
+        }
+        enforceLockedFacing(state);
+    }
 
     @Override
     public void validate() {
@@ -169,6 +240,27 @@ public abstract class EPartController<P extends EPart<?>> extends TileCustomCont
     @Override
     public void onLoad() {
         loaded = true;
+        enforcePlacementFacingLockTick();
+    }
+
+    @Override
+    public void readCustomNBT(final NBTTagCompound compound) {
+        super.readCustomNBT(compound);
+        if (compound.hasKey("placementFacingLock")) {
+            int idx = compound.getByte("placementFacingLock");
+            if (idx >= 0 && idx < EnumFacing.VALUES.length) {
+                placementFacingLock = EnumFacing.VALUES[idx];
+                controllerRotation = placementFacingLock;
+            }
+        }
+    }
+
+    @Override
+    public void writeCustomNBT(final NBTTagCompound compound) {
+        super.writeCustomNBT(compound);
+        if (placementFacingLock != null) {
+            compound.setByte("placementFacingLock", (byte) placementFacingLock.getIndex());
+        }
     }
 
     @Override

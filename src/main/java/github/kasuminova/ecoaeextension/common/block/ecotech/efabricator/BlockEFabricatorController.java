@@ -10,6 +10,7 @@ import hellfirepvp.modularmachinery.common.machine.DynamicMachine;
 import hellfirepvp.modularmachinery.common.machine.MachineRegistry;
 import hellfirepvp.modularmachinery.common.util.IOInventory;
 import net.minecraft.block.state.IBlockState;
+import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -71,6 +72,90 @@ public class BlockEFabricatorController extends BlockController {
     @Override
     public int getLightValue(@Nonnull final IBlockState state) {
         return state.getValue(FORMED) ? 10 : 0;
+    }
+
+    @Override
+    @Nonnull
+    public IBlockState getStateForPlacement(
+            @Nonnull final World world,
+            @Nonnull final BlockPos pos,
+            @Nonnull final EnumFacing facing,
+            final float hitX,
+            final float hitY,
+            final float hitZ,
+            final int meta,
+            @Nullable final EntityLivingBase placer,
+            @Nonnull final EnumHand hand
+    ) {
+        IBlockState state = super.getStateForPlacement(world, pos, facing, hitX, hitY, hitZ, meta, placer, hand);
+        EnumFacing resolvedFacing = resolvePlacementFacing(placer);
+        state = state.withProperty(FACING, resolvedFacing);
+        logPlacementDebug("getStateForPlacement", world, pos, placer, hitX, hitY, hitZ, resolvedFacing, state.getValue(FACING));
+        return state;
+    }
+
+    @Override
+    public void onBlockPlacedBy(
+            @Nonnull final World worldIn,
+            @Nonnull final BlockPos pos,
+            @Nonnull final IBlockState state,
+            @Nullable final EntityLivingBase placer,
+            @Nonnull final ItemStack stack
+    ) {
+        super.onBlockPlacedBy(worldIn, pos, state, placer, stack);
+
+        EnumFacing placementFacing = resolvePlacementFacing(placer);
+        IBlockState currentState = worldIn.getBlockState(pos);
+        if (currentState.getPropertyKeys().contains(FACING) && currentState.getValue(FACING) != placementFacing) {
+            currentState = currentState.withProperty(FACING, placementFacing);
+            worldIn.setBlockState(pos, currentState, 3);
+        }
+        logPlacementDebug("onBlockPlacedBy.afterFix", worldIn, pos, placer, 0F, 0F, 0F, placementFacing,
+                currentState.getPropertyKeys().contains(FACING) ? currentState.getValue(FACING) : null);
+
+        TileEntity tile = worldIn.getTileEntity(pos);
+        if (tile instanceof EFabricatorController ctrl) {
+            ctrl.setPlacementFacingLock(placementFacing);
+            if (!worldIn.isRemote) {
+                ctrl.notifyStructureFormedState(ctrl.isStructureFormed());
+            }
+        }
+    }
+
+    @Nonnull
+    protected EnumFacing resolvePlacementFacing(@Nullable final EntityLivingBase placer) {
+        if (placer == null) {
+            return EnumFacing.NORTH;
+        }
+        return placer.getHorizontalFacing().getOpposite();
+    }
+
+    protected void logPlacementDebug(
+            @Nonnull final String stage,
+            @Nonnull final World world,
+            @Nonnull final BlockPos pos,
+            @Nullable final EntityLivingBase placer,
+            final float hitX,
+            final float hitY,
+            final float hitZ,
+            @Nonnull final EnumFacing resolvedFacing,
+            @Nullable final EnumFacing stateFacing
+    ) {
+        ECOAEExtension.log.info(
+                "[ECOAE][FacingLock] stage={} side={} dim={} pos={} placer={} yaw={} pitch={} hit=({},{},{}) resolvedFacing={} stateFacing={}",
+                stage,
+                world.isRemote ? "CLIENT" : "SERVER",
+                world.provider.getDimension(),
+                pos,
+                placer == null ? "null" : placer.getName(),
+                placer == null ? 0F : placer.rotationYaw,
+                placer == null ? 0F : placer.rotationPitch,
+                hitX,
+                hitY,
+                hitZ,
+                resolvedFacing,
+                stateFacing
+        );
     }
 
     @Override
