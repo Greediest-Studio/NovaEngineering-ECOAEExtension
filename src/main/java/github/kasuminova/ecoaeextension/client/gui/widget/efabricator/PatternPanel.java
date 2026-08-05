@@ -50,8 +50,8 @@ public class PatternPanel extends SizedColumn {
     private static final Pattern COLOR_CODE_PATTERN = Pattern.compile("§.");
 
     private final Map<BlockPos, Int2ObjectMap<PatternSlot>> patterns = new Object2ObjectLinkedOpenHashMap<>();
-    private ISearchStorage<PatternSlot> inputSearchStorage = new GeneralizedSuffixTree<>();
-    private ISearchStorage<PatternSlot> outputSearchStorage = new GeneralizedSuffixTree<>();
+    private PatternSearchStorage<PatternSlot> inputSearchStorage = new PatternSearchStorage<>();
+    private PatternSearchStorage<PatternSlot> outputSearchStorage = new PatternSearchStorage<>();
 
     private String inputSearchContent = "";
     private String outputSearchContent = "";
@@ -116,8 +116,8 @@ public class PatternPanel extends SizedColumn {
             });
 
             if (fullUpdate || somethingRemoved.get()) {
-                inputSearchStorage = new GeneralizedSuffixTree<>();
-                outputSearchStorage = new GeneralizedSuffixTree<>();
+                inputSearchStorage = new PatternSearchStorage<>();
+                outputSearchStorage = new PatternSearchStorage<>();
 
                 for (Int2ObjectMap<PatternSlot> slotPattern : patterns.values()) {
                     for (final PatternSlot slot : slotPattern.values()) {
@@ -244,6 +244,41 @@ public class PatternPanel extends SizedColumn {
 
     private static String getClearColorName(final IAEItemStack input) {
         return COLOR_CODE_PATTERN.matcher(input.getDefinition().getDisplayName()).replaceAll("");
+    }
+
+    private static final class PatternSearchStorage<T> {
+
+        private final ISearchStorage<T> exactSearchStorage = new GeneralizedSuffixTree<>();
+        private final List<SearchEntry<T>> entries = new ArrayList<>();
+
+        private void put(final String key, final T value) {
+            exactSearchStorage.put(key, value);
+            entries.add(new SearchEntry<>(key, value));
+        }
+
+        private void getSearchResults(final String query, final Set<T> results) {
+            exactSearchStorage.getSearchResults(query, results);
+            if (query.trim().isEmpty() || !JecPinyinMatcher.isAvailable()) {
+                return;
+            }
+
+            for (final SearchEntry<T> entry : entries) {
+                if (JecPinyinMatcher.contains(entry.key, query)) {
+                    results.add(entry.value);
+                }
+            }
+        }
+
+        private static final class SearchEntry<T> {
+
+            private final String key;
+            private final T value;
+
+            private SearchEntry(final String key, final T value) {
+                this.key = key;
+                this.value = value;
+            }
+        }
     }
 
     private static class InternalColumn extends ScrollingColumn {
