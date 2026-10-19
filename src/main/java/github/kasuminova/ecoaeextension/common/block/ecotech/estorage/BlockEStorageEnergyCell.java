@@ -86,10 +86,12 @@ public class BlockEStorageEnergyCell extends BlockEStoragePart {
             return;
         }
 
-        NBTTagCompound tag = new NBTTagCompound();
-        cell.writeCustomNBT(tag);
+        if (cell.getEnergyStored() > 0.0001D) {
+            NBTTagCompound tag = new NBTTagCompound();
+            cell.writeCustomNBT(tag);
+            dropped.setTagCompound(tag);
+        }
         cell.setEnergyStored(0D);
-        dropped.setTagCompound(tag);
         spawnAsEntity(world, pos, dropped);
         world.removeTileEntity(pos);
     }
