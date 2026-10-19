@@ -2,6 +2,7 @@
  * It is advised that you do not edit anything in the build.gradle; unless you are sure of what you are doing
  */
 import com.gtnewhorizons.retrofuturagradle.mcp.InjectTagsTask
+import com.gtnewhorizons.retrofuturagradle.mcp.ReobfuscatedJar
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.gradle.ext.Gradle
 
@@ -10,7 +11,7 @@ plugins {
     id 'java-library'
     id 'maven-publish'
     id 'org.jetbrains.gradle.plugin.idea-ext' version '1.1.7'
-    id 'com.gtnewhorizons.retrofuturagradle' version '1.4.0'
+    id 'com.gtnewhorizons.retrofuturagradle' version '1.4.3'
     id 'com.matthewprenger.cursegradle' version '1.4.0' apply false
     id 'com.modrinth.minotaur' version '2.+' apply false
     id 'org.jetbrains.changelog' version '2.2.0'
@@ -215,6 +216,11 @@ jar {
     // Add all embedded dependencies into the jar
     from(provider { configurations.embed.collect { it.isDirectory() ? it : zipTree(it) } })
 
+}
+
+tasks.named('reobfJar', ReobfuscatedJar) {
+    dependsOn tasks.named('jar')
+    inputJar.set(tasks.named('jar', Jar).flatMap { it.archiveFile })
 }
 
 idea {

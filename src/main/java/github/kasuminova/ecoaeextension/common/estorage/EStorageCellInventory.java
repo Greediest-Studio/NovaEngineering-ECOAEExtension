@@ -171,6 +171,12 @@ public class EStorageCellInventory<T extends IAEStack<T>> extends AbstractCellIn
             tagCompound.removeTag(ITEM_SLOT_COUNT + x);
         }
 
+        if (tagCompound.isEmpty()) {
+            this.getItemStack().setTagCompound(null);
+        } else {
+            this.getItemStack().setTagCompound(tagCompound);
+        }
+
         inv.setIsPersisted(true);
     }
 
